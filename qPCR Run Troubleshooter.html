@@ -390,6 +390,12 @@ function fixPdf(s,boxes,now){
   doc.setFillColor(...C.navy);doc.rect(0,0,W,84,'F');
   font(19,'bold',C.white);doc.text('qPCR Run Troubleshooter',M,26,{baseline:'top'});
   font(10,'normal',[190,210,232]);doc.text(pdfSafe((s.good?'Run report':'Fix report')+'  ·  Saved '+now.toLocaleString()),M,52,{baseline:'top'});
+  // logo, top right: the white version from the page header reads on the navy band
+  const logo=document.querySelector('.logo-d');
+  if(logo&&logo.src.startsWith('data:image/png')){
+    const LW=150, LH=LW*93/440;
+    try{doc.addImage(logo.src,'PNG',W-M-LW,(84-LH)/2,LW,LH,'logo','FAST')}catch(e){console.error(e)}
+  }
   y=112;
 
   // verdict pill + title + summary
