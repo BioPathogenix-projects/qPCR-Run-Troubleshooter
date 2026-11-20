@@ -162,6 +162,7 @@ footer a{color:var(--accent);font-weight:700}
 </div>
 <div class="toast" id="toast" hidden></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 /* ---------- mini visuals ---------- */
 const W=240,H=130,PL=26,PR=8,PT=10,PB=20;
@@ -325,15 +326,107 @@ function renderSol(s){
    <div><h3>${s.good?'Before you report':'Corrective actions'}</h3><ol class="steps">${s.a.map((a,i)=>`<li><label><input type="checkbox" id="step${i}"><span>${esc(a)}</span></label></li>`).join('')}</ol>
     <p class="progress" id="prog">0 of ${s.a.length} done</p></div></div>
   ${s.good?'':`<div class="rerun"><strong>Before you re-run</strong><ul>${RERUN.map(r=>`<li>${esc(r)}</li>`).join('')}</ul></div>`}
-  <div class="tools"><button class="btn primary" id="copy" type="button">Copy this fix</button><button class="btn" id="again" type="button">Troubleshoot another run</button></div>`;
+  <div class="tools"><button class="btn primary" id="copy" type="button">Copy this fix</button><button class="btn" id="download" type="button">Download this fix</button><button class="btn" id="again" type="button">Troubleshoot another run</button></div>`;
   const boxes=[...view.querySelectorAll('.steps input')];
   boxes.forEach(b=>b.addEventListener('change',()=>{document.getElementById('prog').textContent=`${boxes.filter(x=>x.checked).length} of ${boxes.length} done`;}));
   document.getElementById('again').onclick=()=>{path=[];cur='start';render(true)};
+  const pathTxt=()=>'Path: '+path.map(p=>Q[p.node].short+' = '+Q[p.node].opts[p.opt].l).join(' > ');
   document.getElementById('copy').onclick=()=>{
-    const txt=[s.t,'',s.s,'',(s.good?'Targets: ':'Likely causes: ')+s.c.join('; '),'',(s.good?'Before you report:':'Corrective actions:'),...s.a.map((a,i)=>`${i+1}. ${a}`),'','Path: '+path.map(p=>Q[p.node].short+' = '+Q[p.node].opts[p.opt].l).join(' > '),'','qPCR Run Troubleshooter · www.BioPathogenix.com'].join('\n');
+    const txt=[s.t,'',s.s,'',(s.good?'Targets: ':'Likely causes: ')+s.c.join('; '),'',(s.good?'Before you report:':'Corrective actions:'),...s.a.map((a,i)=>`${i+1}. ${a}`),'',pathTxt(),'','qPCR Run Troubleshooter · www.BioPathogenix.com'].join('\n');
     const ok=()=>toast('Copied to clipboard');
     try{navigator.clipboard.writeText(txt).then(ok,()=>fallback(txt))}catch(e){fallback(txt)}
   };
+  document.getElementById('download').onclick=()=>{
+    const now=new Date();
+    const base='qpcr-fix-'+s.t.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+now.toISOString().slice(0,10);
+    if(window.jspdf){
+      try{fixPdf(s,boxes,now).save(base+'.pdf');toast('PDF downloaded');return}catch(e){console.error(e)}
+    }
+    /* Fallback when the PDF library can't load (e.g. offline): save the same report as plain text */
+    const done=boxes.filter(x=>x.checked).length;
+    const txt=['qPCR Run Troubleshooter — '+(s.good?'Run report':'Fix report'),'Saved: '+now.toLocaleString(),'',
+      (s.good?'RESULT: ':'DIAGNOSIS: ')+s.t,'',s.s,'',
+      (s.good?'TARGETS':'LIKELY CAUSES'),...s.c.map(c=>'- '+c),'',
+      (s.good?'BEFORE YOU REPORT':'CORRECTIVE ACTIONS')+` (${done} of ${boxes.length} done)`,...s.a.map((a,i)=>`[${boxes[i].checked?'x':' '}] ${i+1}. ${a}`),
+      ...(s.tip?['','Tip: '+s.tip]:[]),
+      ...(s.good?[]:['','BEFORE YOU RE-RUN',...RERUN.map(r=>'- '+r)]),
+      '',pathTxt(),'','www.BioPathogenix.com'].join('\r\n');
+    const url=URL.createObjectURL(new Blob([txt],{type:'text/plain;charset=utf-8'}));
+    const a=document.createElement('a');a.href=url;a.download=base+'.txt';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    toast('PDF unavailable offline, saved as text');
+  };
+}
+
+/* ---------- PDF report (jsPDF) ---------- */
+// Built-in PDF fonts only cover Latin-1, so swap the few symbols outside it for plain equivalents
+const pdfSafe=t=>String(t).replace(/[  -​  ]/g,' ').replace(/[’‘′]/g,"'").replace(/[“”]/g,'"')
+  .replace(/[−–—]/g,'-').replace(/→/g,'->').replace(/≈/g,'~').replace(/⁺/g,'+').replace(/₂/g,'2').replace(/[^\x00-\xFF]/g,'');
+function fixPdf(s,boxes,now){
+  const doc=new window.jspdf.jsPDF({unit:'pt',format:'a4'});
+  const W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight(), M=50, CW=W-2*M, BOTTOM=H-60;
+  const C={navy:[18,41,79],ink:[27,42,64],muted:[90,107,128],accent:[60,140,196],soft:[230,241,250],
+    warn:[200,96,58],warnSoft:[251,237,230],good:[46,138,99],goodSoft:[226,243,235],line:[213,227,240],white:[255,255,255]};
+  let y=0;
+  const font=(size,style='normal',color=C.ink)=>{doc.setFont('helvetica',style);doc.setFontSize(size);doc.setTextColor(...color)};
+  const ensure=h=>{if(y+h>BOTTOM){doc.addPage();y=M}};
+  const lines=(t,w)=>doc.splitTextToSize(pdfSafe(t),w);
+  const para=(t,size,style,color,gap=6)=>{font(size,style,color);const lh=size*1.45;
+    lines(t,CW).forEach(l=>{ensure(lh);doc.text(l,M,y,{baseline:'top'});y+=lh});y+=gap};
+  const heading=t=>{ensure(48);y+=14;font(9,'bold',C.accent);doc.text(pdfSafe(t).toUpperCase(),M,y,{baseline:'top',charSpace:0.8});
+    y+=14;doc.setDrawColor(...C.line);doc.setLineWidth(0.75);doc.line(M,y,M+CW,y);y+=10};
+  // list item with a drawn marker: 'dot', a number, or a checkbox state (true/false)
+  const item=(t,marker)=>{font(10.5,'normal',C.ink);const lh=15, ind=20, ls=lines(t,CW-ind);
+    ensure(Math.min(ls.length,2)*lh);
+    if(marker==='dot'){doc.setFillColor(...C.accent);doc.circle(M+5,y+lh/2-1,2,'F')}
+    else if(typeof marker==='number'){font(10.5,'bold',C.accent);doc.text(marker+'.',M,y,{baseline:'top'});font(10.5,'normal',C.ink)}
+    else{doc.setLineWidth(1);doc.setDrawColor(...(marker?C.good:C.muted));
+      if(marker){doc.setFillColor(...C.good);doc.roundedRect(M,y+1.5,10,10,2,2,'FD');doc.setDrawColor(...C.white);doc.setLineWidth(1.6);
+        doc.line(M+2.4,y+6.8,M+4.4,y+8.8);doc.line(M+4.4,y+8.8,M+7.8,y+4)}
+      else doc.roundedRect(M,y+1.5,10,10,2,2,'S')}
+    ls.forEach(l=>{ensure(lh);doc.text(l,M+ind,y,{baseline:'top'});y+=lh});y+=5};
+
+  // header band
+  doc.setFillColor(...C.navy);doc.rect(0,0,W,84,'F');
+  font(19,'bold',C.white);doc.text('qPCR Run Troubleshooter',M,26,{baseline:'top'});
+  font(10,'normal',[190,210,232]);doc.text(pdfSafe((s.good?'Run report':'Fix report')+'  ·  Saved '+now.toLocaleString()),M,52,{baseline:'top'});
+  y=112;
+
+  // verdict pill + title + summary
+  const tag=s.good?'RUN PASSES':'DIAGNOSIS';font(8.5,'bold',s.good?C.good:C.warn);
+  const tw=doc.getTextWidth(tag)+tag.length*0.6+18;doc.setFillColor(...(s.good?C.goodSoft:C.warnSoft));doc.roundedRect(M,y,tw,18,9,9,'F');
+  doc.text(tag,M+9,y+5,{baseline:'top',charSpace:0.6});y+=30;
+  para(s.t,20,'bold',C.navy,4);
+  para(s.s,11,'normal',C.ink,4);
+
+  heading(s.good?'Targets':'Likely causes');
+  s.c.forEach(c=>item(c,'dot'));
+  if(s.tip){y+=4;para('Tip: '+s.tip,10,'italic',C.muted,2)}
+
+  const done=boxes.filter(b=>b.checked).length;
+  heading((s.good?'Before you report':'Corrective actions')+`  (${done} of ${boxes.length} done)`);
+  s.a.forEach((a,i)=>item(`${i+1}. ${a}`,boxes[i].checked));
+
+  if(!s.good){ // shaded "before you re-run" box, kept on one page
+    font(10.5,'normal',C.ink);const ls=RERUN.map(r=>lines(r,CW-44)), lh=15;
+    const h=24+18+ls.reduce((n,l)=>n+l.length*lh+4,0)+8;
+    y+=16;ensure(h);doc.setFillColor(...C.soft);doc.roundedRect(M,y,CW,h,8,8,'F');
+    let by=y+16;font(11,'bold',C.navy);doc.text('Before you re-run',M+16,by,{baseline:'top'});by+=22;
+    ls.forEach(l=>{doc.setFillColor(...C.accent);doc.circle(M+21,by+lh/2-1,2,'F');font(10.5,'normal',C.ink);
+      l.forEach(t=>{doc.text(t,M+32,by,{baseline:'top'});by+=lh});by+=4});
+    y+=h;
+  }
+
+  heading('How you got here');
+  if(path.length) path.forEach((p,i)=>item(Q[p.node].short+': '+Q[p.node].opts[p.opt].l,i+1));
+  else para('No answers recorded.',10,'normal',C.muted);
+
+  // footer on every page
+  const n=doc.getNumberOfPages();
+  for(let i=1;i<=n;i++){doc.setPage(i);doc.setDrawColor(...C.line);doc.setLineWidth(0.75);doc.line(M,H-42,W-M,H-42);
+    font(8,'normal',C.muted);doc.text(pdfSafe('qPCR Run Troubleshooter  ·  www.BioPathogenix.com'),M,H-32,{baseline:'top'});
+    doc.text(`Page ${i} of ${n}`,W-M,H-32,{baseline:'top',align:'right'})}
+  return doc;
 }
 function fallback(txt){const t=document.createElement('textarea');t.value=txt;document.body.appendChild(t);t.select();
   try{document.execCommand('copy');toast('Copied to clipboard')}catch(e){toast('Select the text to copy it')}t.remove();}
