@@ -237,8 +237,8 @@ const Q={
  ntc:{stage:0,short:'NTC',q:'Is your no-template control (NTC) clean?',
   why:'The NTC contains every reagent except template. Any amplification here means target DNA got in somewhere it should not be.',
   opts:[
-   {l:'Yes, no amplification',h:'The NTC stays flat below the threshold.',m:'Both controls passed. Now your samples can tell you what went wrong.',v:{t:'amp',curves:[{ct:21},{flat:true,cls:'ok',label:'NTC'}],alt:'Clean NTC'},n:'samples'},
-   {l:'No, the NTC has a Ct',h:'Even a late Ct (for example 33 to 38) in the NTC counts.',m:'Contamination. Fix this before you trust any sample result on the plate.',v:{t:'amp',curves:[{ct:21},{ct:34,plat:.45,cls:'bad',label:'NTC'}],alt:'NTC amplifies late'},n:'sol_ntc'}]},
+   {l:'Yes, no amplification',h:'The NTC stays flat below the threshold.',m:'Both controls passed. Now your samples can tell you what went wrong.',v:{t:'amp',curves:[{flat:true,cls:'ok',label:'NTC'}],alt:'Clean NTC'},n:'samples'},
+   {l:'No, the NTC has a Ct',h:'Even a late Ct (for example 33 to 38) in the NTC counts.',m:'Contamination. Fix this before you trust any sample result on the plate.',v:{t:'amp',curves:[{ct:34,plat:.45,cls:'bad',label:'NTC'}],alt:'NTC amplifies late'},n:'sol_ntc'}]},
  samples:{stage:1,short:'Sample pattern',q:'What do you see in your samples?',
   why:'Your controls passed, so the samples now point to the cause. Choose the pattern closest to your run. Hover or focus on a tile to see what it means.',
   opts:[
